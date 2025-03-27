@@ -52,7 +52,7 @@ cd icpc-env-greece
     ```bash
     cd files && curl -O https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2023-06/R/eclipse-java-2023-06-R-linux-gtk-x86_64.tar.gz
 
-1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible.
+1. Run `secrets/gen-secrets.sh` to create some ssh keys/other secret data. Follow this with `./fetch-secrets.sh` to put them in the right place for ansible.
 2. Copy `group_vars/all.dist` to `group_vars/all` and edit it to your liking. Specifically
 set the icpcadmin password, and firewall expiration properly.
 3. Run the `create_baseimg.sh` script to create an unattended installation disk for ubuntu, perform the installation,
