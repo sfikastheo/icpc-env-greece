@@ -25,11 +25,36 @@ http_access deny CONNECT !SSL_ports
 http_access deny manager
 
 # Block everything except our reverseproxy, which will filter the allowed network destinations
+#acl reverseproxy dst 127.0.0.1
+#http_access allow reverseproxy
+#http_access deny all
+# ===== ALLOWED DOMAINS =====
+acl allowed_domains dstdomain "/etc/squid/acl_allowed_domains.txt"
 acl reverseproxy dst 127.0.0.1
+#acl localnet src 127.0.0.0/8 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
+
+# NEW: Allow whitelisted domains
+#http_access allow localnet
+http_access allow allowed_domains
+# Allow reverse proxy
 http_access allow reverseproxy
+
+# Block everything else
 http_access deny all
+
 # show a block page
 deny_info ICPC_ERR_ACCESS_DENIED all
+
+# ===== CONTEST SERVER AUTH =====
+# Inject the auth token (replaces the old tinyproxy AddHeader in playbooks/proxy.yaml).
+# Only sent to auth_token_domains so the token is not leaked to other whitelisted sites.
+# Works for https as well, since everything is ssl-bumped below.
+{% if auth_token is defined and auth_token and (auth_token_domains | default([])) | length > 0 %}
+{% for domain in auth_token_domains %}
+acl contest_server dstdomain .{{ domain }}
+{% endfor %}
+request_header_add Authorization "Bearer {{ auth_token }}" contest_server
+{% endif %}
 
 coredump_dir /var/spool/squid
 

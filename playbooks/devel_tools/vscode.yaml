@@ -1,0 +1,71 @@
+- name: apt key for vscode
+  apt_key: url=https://packages.microsoft.com/keys/microsoft.asc state=present
+- name: apt repo for vscode
+  apt_repository: repo="deb [arch=amd64] https://packages.microsoft.com/repos/vscode stable main" update_cache=yes filename="vscode"
+
+- name: install vscode
+  apt:
+    state: present
+    pkg: code
+
+# Install extensions:
+- name: make sure vscode extension directory exists
+  file: path=/opt/vscode/extensions state=directory
+  
+- name: vscode extensions
+  shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
+  loop: "{{ vscode_extensions }}"
+
+# TODO: This is intentionally over-permissive; some extension files need
+# execute permissions for C/C++ tooling to work. Narrow this down later.
+- name: make vscode extension files executable
+  shell: find /opt/vscode/extensions -type f -exec chmod 755 {} +
+
+
+
+- name: compute which installed extensions to disable by default
+  set_fact:
+    vscode_disabled_effective: "{{ vscode_disabled_by_default | default([]) | intersect(vscode_extensions) }}"
+
+- name: seed VS Code disabled-extensions defaults into skel (installed but off)
+  when: vscode_disabled_effective | length > 0
+  shell: |
+    python3 - <<'PY'
+    import json, os, sqlite3
+    ids = "{{ vscode_disabled_effective | join(' ') }}".split()
+    base = "/etc/skel/.config/Code/User/globalStorage"
+    os.makedirs(base, exist_ok=True)
+    disabled = [{"id": i} for i in ids]
+    value = json.dumps(disabled)
+    # Legacy JSON store (older VS Code builds read this).
+    with open(os.path.join(base, "storage.json"), "w") as f:
+        json.dump({"extensionsIdentifiers/disabled": disabled}, f)
+    # Current SQLite store (state.vscdb) used by recent VS Code builds.
+    con = sqlite3.connect(os.path.join(base, "state.vscdb"))
+    con.execute("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)")
+    con.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+                ("extensionsIdentifiers/disabled", value))
+    con.commit()
+    con.close()
+    PY
+  args:
+    executable: /bin/bash
+
+
+- name: create a script to symlink our extensions
+  copy:
+    dest: /usr/local/bin/vscode-extension-install
+    mode: 0755
+    content: |
+      #!/bin/bash
+      mkdir -p $HOME/.vscode
+      ln -sf /opt/vscode/extensions $HOME/.vscode/extensions
+
+- name: add vscode extension install script to autostart
+  copy:
+    dest: /etc/xdg/autostart/vscode-extension-install.desktop
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Exec=/usr/local/bin/vscode-extension-install
+      NoDisplay=true

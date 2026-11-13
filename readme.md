@@ -28,6 +28,7 @@ We will reduce the features of the original image to supports the following:
 * qemu, uml-utlities
 * Approx 30GB disk space free
 * Ansible
+* Python3
 
 ## Building the Image
 Building the image is a very simple process, and takes between 10-30minutes
@@ -35,27 +36,66 @@ depending on connection speed and various other factors.
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/SfikasTeo/icpc-env-greece.git
+git clone https://github.com/alexspitalas/icpc-env-greece
 cd icpc-env-greece
 ```
 1. Make sure dependencies are met
   * Install required packages
     ```bash
     sudo apt-get install qemu-system-x86 genisoimage bsdtar ansible # Debian based Distros
-    sudo apt-get install qemu-system-x86 genisoimage ansible libarchive-tools # Debian based Distros without bsdtar
+    sudo apt-get install qemu-system-x86 genisoimage ansible libarchive-tools xorriso python3-passlib # newer Debian based Distros without bsdtar
     sudo pacman -S qemu-system-x86 cdrtools libarchive ansible # Arch Based Distros
     ```
-  * Download the 64 bit version of Ubuntu 20.04.6 Server inside the cloned directory:
+  * Download the 64 bit version of Ubuntu 22.04.2 Server inside the cloned directory:
     ```bash
-    curl -O https://cdimage.ubuntu.com/releases/jammy/release/inteliot/ubuntu-22.04-live-server-amd64+intel-iot.iso
+    curl -O https://releases.ubuntu.com/releases/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash
-    cd files && wget http://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2023-06/R/eclipse-java-2023-06-R-linux-gtk-x86_64.tar.gz
+    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/R/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz
+    ```
+  * Also download these IDEs in the `files/` directory:<br>
+    CLion:
+    ```bash
+    curl -O https://download-cdn.jetbrains.com/cpp/CLion-2025.2.4.tar.gz
+    ```
+    IntelliJ:
+    ```bash
+    curl -O https://download-cdn.jetbrains.com/idea/ideaIC-2025.2.4.tar.gz
+    ```
+    PyCharm:
+    ```bash
+    curl -O https://download.jetbrains.com/python/pycharm-2025.3.6.1.tar.gz
+    ```
+    NetBeans:
+    ```bash
+    curl -4 -O https://archive.apache.org/dist/netbeans/netbeans-installers/18/apache-netbeans_18-1_all.deb
+    ```
 
-1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible.
+  * Download Kotlin zip into the `files/` directory
+    ```bash
+    curl -L -O https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
+    ```
+
+1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible. Pass the ID of the contest as an argument on both scripts.
+```bash
+cd ../secrets
+chmod u+x gen-secrets.sh
+./gen-secrets.sh 'contestID'
+```
+```bash
+cd ..
+chmod u+x fetch-secrets.sh
+./fetch-secrets.sh 'contestID'
+```
 2. Copy `group_vars/all.dist` to `group_vars/all` and edit it to your liking. Specifically
 set the icpcadmin password, and firewall expiration properly.
+```bash
+cp group_vars/all.dist group_vars/all # You can append this with .yml .yaml
+# If you want to edit password and firewall expiration
+code group_vars/all #opens editor
+```
+
 3. Run the `create_baseimg.sh` script to create an unattended installation disk for ubuntu, perform the installation,
 and leave the base image ready for processing. During this step you can specify how large you want the image to be(Default 28500M to fit on most
 32G flash drives).
@@ -65,14 +105,14 @@ and leave the base image ready for processing. During this step you can specify 
 ```
 4. Build the actual contestant image. This step takes the base image, boots it up,
 runs ansible to configure everything, performs a few final cleanup steps, and finally
-powers it off. Take a walk, this step takes some time(10-30minutes)
+powers it off. Take a walk, this step takes some time(10-30minutes).
 ```bash
 ./build-final.sh
 ```
-5. Take the newly minted image and copy it to a usb drive (or hard drive) (as root)
+5. Take the newly minted image and copy it to a usb drive (or hard drive) (as root). You can see all devices by running 'lsblk'.
 ```
 # WARNING: Make sure to replace /dev/sdx with your actual device
-sudo dd if=output/2020-09-01_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
+sudo dd if=output/all-2025-09-01_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
 ```
 ## Customization of the Image
 One of our goals with this image is for it to be easily customized. To achieve this
@@ -105,3 +145,21 @@ functions.
 Once you have ansible performing all the tasks you need, halt the vm, then
 continue with the `build-final.sh` script. You should never use an image created
 by the `runvm.sh` script, always build images using `build-final.sh`
+
+### SSH Access to Built Image
+In the final image, SSH password authentication is disabled and `imageadmin` is removed. Only SSH key authentication is permitted via `ssh.service`:
+* Connect as the **`icpcadmin`** user using an authorized SSH key (e.g., `files/secrets/icpcadmin@contestmanager`, your local `~/.ssh/id_ed25519`, or a key listed in `icpcadmin_ssh_keys`):
+  ```bash
+  ssh -i files/secrets/icpcadmin@contestmanager icpcadmin@<ip_or_localhost>
+  ```
+* When testing under QEMU, run:
+  ```bash
+  ./connect2qemu.sh
+  ```
+  This connects as `icpcadmin` on the active port (5222 or 2222).
+* You can add custom public keys to `group_vars/all` under `icpcadmin_ssh_keys` prior to building.
+
+
+## Reset Contestant
+To reset a contestant all you need to do is to `log out` from the contestant user and **log in** to the `Clear Team Account`. When you log in the reset script will automaticly start and it will recreate the `Contestant user` and will reboot the system.
+In case you want to use the command you can run the `delete-user` command on the admin side
